@@ -24,3 +24,22 @@ def menu_lookup(db, category=None, keyword=None, max_price=None):
             "description": item.description,
         })
     return results
+
+
+
+menu_lookup_tool = {
+    "type": "function",
+    "function": {
+        "name": "menu_lookup",
+        "description": "Look up menu items by category, keyword, or max price.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string", "enum": ["Appetizers", "Mains", "Desserts", "Drinks"]},
+                "keyword": {"type": "string"},
+                "max_price": {"type": "number"},
+            },
+            "required": [],
+        },
+    },
+}
