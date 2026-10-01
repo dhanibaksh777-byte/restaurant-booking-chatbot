@@ -1,11 +1,14 @@
 from groq import Groq
 from tools.menu_lookup import menu_lookup,menu_lookup_tool
 from dotenv import load_dotenv
+from model import Conversation,Message
+from sqlalchemy.orm import Session
 import json
 import os
 
 
 load_dotenv()
+
 
 SYSTEM_PROMPT = """You are the virtual host for {name}, a restaurant located at {address}.
 You are open from {opening_time} to {closing_time}.
@@ -30,9 +33,25 @@ if not api_key:
 
 client = Groq(api_key=api_key)
 
-def get_response(db,message : str):
-    messages = [{"role" : "system","content" : system_message},
-               {"role" : "user", "content" : message}] 
+def get_response(db  : Session,message : str,conversation_id : str):
+
+    if not conversation_id:
+        new_conv = Conversation()
+        db.add(new_conv)
+        db.commit()
+        conversation_id = new_conv.id
+
+    new_message = Message(conversation_id = conversation_id,role = "user",content = message)
+    db.add(new_message)
+    db.commit()
+
+    history = db.query(Message).filter(Message.conversation_id == conversation_id).order_by(Message.created_at).all()
+    messages = [{"role": "system", "content": system_message}]
+    for h in history:
+        messages.append({"role" : h.role,"content" : h.content})
+
+
+
     while True:
 
         response = client.chat.completions.create(
@@ -43,7 +62,11 @@ def get_response(db,message : str):
 
         tool_calls = response.choices[0].message.tool_calls
         if not tool_calls:
-            return response.choices[0].message.content
+            final_text = response.choices[0].message.content
+            db.add(Message(conversation_id=conversation_id, role="assistant", content=final_text))
+            db.commit()
+            return final_text, conversation_id
+
         messages.append(response.choices[0].message)
         for tool_call in tool_calls:
             arguments  = json.loads(tool_call.function.arguments)
@@ -53,4 +76,7 @@ def get_response(db,message : str):
 
 from database import SessionLocal
 db = SessionLocal()
-print(get_response(db, "what mains do you have?"))
+reply1, conv_id = get_response(db, "what mains do you have?", None)
+print("Bot:", reply1)
+reply2, conv_id = get_response(db, "tell me more about the salmon", conv_id)
+print(reply2)
